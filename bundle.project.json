@@ -1,0 +1,15 @@
+{
+    "name": "Profile Bundle",
+    "tree": {
+      "$className": "DataModel",
+  
+      "ReplicatedStorage": {
+        "Packages": {
+          "$path": "Packages"
+        },
+        "Profile": {
+          "$path": "src"
+        }
+      }
+    }
+}
