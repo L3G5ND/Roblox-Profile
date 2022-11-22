@@ -11,7 +11,10 @@ local defaultData = {
 }
 
 local plrAdded = function(player)
-    local playerProfile = Profile.getProfile(player, {
+    coroutine.wrap(function()
+        print( Profile.getProfile(player):get() )
+    end)()
+    local playerProfile = Profile.createProfile(player, {
         default = defaultData,
         studioSave = true,
         private = {

@@ -6,6 +6,7 @@ local Package = script.Parent
 local Util = Package.Util
 local Assert = require(Util.Assert)
 local Assign = require(Util.Assign)
+local Error = require(Util.Error)
 local DeepEqual = require(Util.DeepEqual)
 local Copy = require(Util.Copy)
 
@@ -21,25 +22,39 @@ local IsStudio = RunService:IsStudio()
 local Profile = {}
 local ProfileCache = {}
 
-function Profile.getProfile(plrOrKey, settings)
+function Profile.getProfile(plrOrKey, timeout)
+    Assert(not timeout or typeof(timeout) == 'number', 'Invalid argument #2 (type \'number\' expected)')
+    local key = ProfileUtil.getKey(plrOrKey)
+    if not ProfileCache[key] then
+        local startTime = os.time()
+        while true do
+            if ProfileCache[key] then
+                break
+            end
+            if os.time() - startTime >= (timeout or 10) then
+                Error('Profile '..key..' doesnt exist')
+            end
+            RunService.Heartbeat:Wait()
+        end
+    end
+    return ProfileCache[key]
+end
+
+function Profile.createProfile(plrOrKey, settings)
     Assert(typeof(plrOrKey) == 'Instance' and plrOrKey.ClassName == 'Player' or typeof(plrOrKey) == 'string', 'Invalid argument #1 (must be a \'Player\' object or type \'string\')')
 
     local key = ProfileUtil.getKey(plrOrKey)
     local loadedKey = ProfileUtil.getLoadedKey(key)
-
-    if ProfileCache[key] then
-        return ProfileCache[key]
-    end
     
     local self = setmetatable({}, {__index = Profile})
 
     self:_rawSetSettings(settings)
 
+    self.key = key
     self.isPlayerProfile = typeof(plrOrKey) == 'Instance' and plrOrKey.ClassName == 'Player'
     if self.isPlayerProfile then
         local plr = plrOrKey
 
-        self.key = key
         self.player = plr
         self.profileDataReplicator = Replicator.new({
             key = self.key,
@@ -51,8 +66,7 @@ function Profile.getProfile(plrOrKey, settings)
             data = false,
             replicators = {plr}
         })
-    else
-        self.key = key     
+    else   
         self.profileDataReplicator = Replicator.new({
             key = key,
             data = {},
@@ -285,6 +299,7 @@ end
 
 function Profile:merge(tbl)
     self:_rawMerge(self:_rawGet(), tbl)
+    self.profileDataChangedSignal:Fire()
     self:_log('['..self.key..']'..' - profile:merge(tbl)', 3)
 end
 
