@@ -12,7 +12,7 @@ local defaultData = {
 
 local plrAdded = function(player)
     coroutine.wrap(function()
-        print( Profile.getProfile(player):get() )
+        print(Profile.getProfile(player):get())
     end)()
     local playerProfile = Profile.createProfile(player, {
         default = defaultData,
@@ -22,7 +22,7 @@ local plrAdded = function(player)
         },
     })
     playerProfile:onChanged('Speed', function(speed, oldSpeed)
-        print('[New Speed]: '..player.Name..' - '..speed)
+        print('[New Speed]: '..player.Name..' -', speed)
     end)
     while task.wait(1) do
         playerProfile:set({

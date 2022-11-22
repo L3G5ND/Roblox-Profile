@@ -1,12 +1,12 @@
-local RunService = game:GetService('RunService')
+local RunService = game:GetService("RunService")
 
 local None = require(script.None)
 local Profile
 
 if RunService:IsServer() then
-    Profile = require(script.Profile)
+	Profile = require(script.Profile)
 else
-    Profile = require(script.ClientProfile)
+	Profile = require(script.ClientProfile)
 end
 
 Profile.None = None
