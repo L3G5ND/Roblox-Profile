@@ -21,6 +21,8 @@ local IsStudio = RunService:IsStudio()
 
 local Profile = {}
 local ProfileCache = {}
+local FailedProfileFetches = {}
+local LoadingProfiles = {}
 
 local function AssignWithNone(target, ...)
 	for index = 1, select("#", ...) do
@@ -45,8 +47,11 @@ function Profile.getProfile(plrOrKey, timeout)
 			if ProfileCache[key] then
 				break
 			end
-			if os.time() - startTime >= (timeout or 10) then
-				Error("Profile " .. key .. " doesnt exist")
+			if os.time() - startTime >= (timeout or 0) then
+				if not LoadingProfiles[key] then
+					FailedProfileFetches[key] = true
+					Error("Profile " .. key .. " doesnt exist")
+				end
 			end
 			RunService.Heartbeat:Wait()
 		end
@@ -62,6 +67,15 @@ function Profile.createProfile(plrOrKey, settings)
 
 	local key = ProfileUtil.getKey(plrOrKey)
 	local loadedKey = ProfileUtil.getLoadedKey(key)
+
+	LoadingProfiles[key] = true
+	print('loading')
+	if FailedProfileFetches[key] then
+		if not settings.IgnoreFailedFetch then
+			print('error')
+			Error('Profile couldn\'t load')
+		end
+	end
 
 	local self = setmetatable({}, { __index = Profile })
 
@@ -129,6 +143,8 @@ function Profile.createProfile(plrOrKey, settings)
 
 	self.profileDataReplicator:set(self:_getPublicProfileData())
 	self.isLoadedReplicator:set(true)
+
+	LoadingProfiles[key] = false
 
 	return self
 end
