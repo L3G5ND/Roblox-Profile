@@ -23,4 +23,10 @@ local updateSpeed = function(speed)
 end
 
 updateSpeed(Profile:get().Speed)
-Profile:onChanged('Speed', updateSpeed)
+Profile.Changed:Connect('Speed', updateSpeed)
+Profile.Changed:Connect(function(...)
+    print(...)
+end)
+Profile.Destroyed:Connect(function()
+    print('Destroyed')
+end)

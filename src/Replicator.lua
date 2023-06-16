@@ -1,7 +1,15 @@
 local RS = game:GetService("ReplicatedStorage")
-local Replicator = script.Parent.Parent:FindFirstChild("Replicator")
-if not Replicator then
-	return require(RS.Packages.Replicator)
-else
-	return require(Replicator)
+
+local Util = script.Parent.Util
+local Error = require(Util.Error)
+
+local Packages = RS:FindFirstChild("Packages")
+
+if Packages then
+	local Package = Packages:FindFirstChild("Replicator")
+	if Package then
+		return require(Package)
+	end
 end
+
+Error("Couldn't find 'Replicator' in 'ReplicatedStorage.Packages'")
