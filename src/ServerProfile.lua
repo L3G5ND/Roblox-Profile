@@ -28,9 +28,20 @@ local function removeNone(tbl)
 	end
 end
 
+local function merge(tbl1, tbl2)
+	for key, value in pairs(tbl2) do
+		if typeof(value) == "table" and typeof(tbl1[key]) == "table" then
+			merge(tbl1[key], value)
+		elseif tbl1[key] == nil then
+			tbl1[key] = value
+		end
+	end
+	return tbl1
+end
+
 local defaultSettings = {
 	maxGetRequests = 4,
-	maxSavesRequests = 10,
+	maxSaveRequests = 10,
 	maxDeleteRequests = 3,
 	studioSave = false,
 	mergeWithDefualt = true
@@ -40,6 +51,7 @@ local ProfileType = TypeMarker.Mark("[Profile]")
 
 local ServerProfile = {}
 local Profiles = {}
+local LoadingProfiles = {}
 
 function ServerProfile.new(plrOrKey, settings)
 	local isPlayer = typeof(plrOrKey) == "Instance" and plrOrKey.ClassName == "Player"
@@ -50,20 +62,21 @@ function ServerProfile.new(plrOrKey, settings)
 
 	local key = isPlayer and 'profile_'..plrOrKey.UserId or plrOrKey
 
-	if Profiles[key] ~= nil then
-		if Profiles[key] == false then
-			while not Profiles[key] do
-				task.wait()
-			end
+	if Profiles[key] then
+		return Profiles[key]
+	end
+	if LoadingProfiles[key] then
+		while not Profiles[key] do
+			task.wait()
 		end
 		return Profiles[key]
 	end
-	Profiles[key] = false
+	LoadingProfiles[key] = true
 
 	local self = setmetatable({}, {
 		__index = ServerProfile,
 		__tostring = function(self)
-			return ProfileType..' - ['..self.key..']'
+			return "[Profile] - ["..self.key.."]"
 		end
 	})
 
@@ -72,39 +85,30 @@ function ServerProfile.new(plrOrKey, settings)
 	self.key = key
 	self.datastore = Datastore.new(self.key)
 
-	self.replicator = Replicator.new({
-		key = self.key,
-		data = {
-			data = {},
-			_isLoaded = false
-		},
-		players = { isPlayer and key or nil },
-	})
-
 	self:_applySettings(settings)
 
-	self.shouldSaveProfileData = false
-	self.shouldSaveDataVersion = false
-	self.shouldSaveVersions = false
+	self.shouldSave = false
 
-	self.dataVersion = self:_getDataVersion()
+	local profileData = self:_get()
+	self.dataVersion = profileData.version
 	self.versions = self:_getVersions()
-	self.cache = {self:get()}
+	self.cache = {profileData.data}
+
+	self._lastSaveTime = os.clock()
 
 	if self.cache[1] == self.default then
-		self.shouldSaveProfileData = true
+		self.shouldSave = true
 	else
 		if self.settings.mergeWithDefualt then
 			self:merge(self.default)
 		end
 	end
 
-	self.replicator:set({
+	self.replicator = Replicator.new({
+		key = self.key,
 		data = self:get(),
-		_isLoaded = true,
+		players = { isPlayer and plrOrKey or nil },
 	})
-
-	self._lastSaveTime = os.clock()
 
 	self.Changed = self.replicator.Changed
 	self.Saved = Signal.new()
@@ -112,6 +116,7 @@ function ServerProfile.new(plrOrKey, settings)
 	self.Destroyed = self.replicator.Destroyed
 
 	Profiles[self.key] = self
+	LoadingProfiles[self.key] = nil
 
 	return self
 end
@@ -124,22 +129,11 @@ function ServerProfile.is(profile)
 end
 
 function ServerProfile:get()
-	if #self.cache > 0 then
-		return Copy(self.cache[#self.cache])
-	end
-	local result = self.datastore:request("ProfileData", self.settings.maxGetRequests)
-	Assert(result.success, "An error occured when getting profile [" .. self.key .. "] - "..result.message)
-	local data = result.data
-	if not data then
-		data = self.default
-	else
-		data = self:_migrate(data)
-	end
-	return data
+	return Copy(self.cache[#self.cache])
 end
 
 function ServerProfile:set(data, hard)
-	Assign(typeof(data) == 'table', "Invalid argument #1 (must be a 'table'")
+	Assert(typeof(data) == 'table', "Invalid argument #1 (must be a 'table'")
 
 	local oldProfileData = self.cache[#self.cache]
 	local newProfileData
@@ -151,54 +145,21 @@ function ServerProfile:set(data, hard)
 	removeNone(newProfileData)
 	
 	if not DeepEqual(oldProfileData, newProfileData) then
-		self.shouldSaveProfileData = true
-		self.shouldSaveVersions = true
+		self.shouldSave = true
 		table.insert(self.cache, newProfileData)
-		self.replicator:set({
-			data = newProfileData
-		})
+		if self.replicator then
+			self.replicator:set(newProfileData)
+		end
 	end
 end
 
---[[
-	tbl1 = {
-		a = 1,
-		b = 2,
-		c = {
-			a = 1,
-			b = 2
-		}
-	},
-
-	tbl2 = {
-		a = 2,
-		b = 1,
-		c = {
-			c = {
-				a = 1,
-				b = 2
-			}
-		}
-	},
-]]
-
 function ServerProfile:merge(data)
-	Assert(typeof(data) == 'table', "Invalid argument #1 (must be a 'table'")
-	local function merge(tbl1, tbl2)
-		for key, value in pairs(tbl2) do
-			if typeof(value) == "table" and typeof(tbl1[key]) == "table" then
-				merge(tbl1[key], value)
-			else
-				tbl1[key] = value
-			end
-		end
-		return tbl1
-	end
+	Assert(typeof(data) == 'table', "Invalid argument #1 (must be a 'table')")
 	self:set(merge(self:get(), data), true)
 end
 
 function ServerProfile:getVersions()
-	return self.versions
+	return Copy(self.versions)
 end
 
 function ServerProfile:setVisibility(players)
@@ -210,30 +171,27 @@ function ServerProfile:save()
 		return false
 	end
 	self._lastSaveTime = os.clock()
-	if self.shouldSaveProfileData then
-		local result = self.datastore:save("ProfileData", self:get(), self.settings.maxSaveRequests)
+	local data = {
+		data = self:get(),
+		version = self.dataVersion
+	}
+	if self.shouldSave then
+		local result = self.datastore:save("ProfileData", data, self.settings.maxSaveRequests)
 
 		if not result.success then
 			Error("Couldn't save 'ProfileData'")
 		end
-		self.shouldSaveProfileData = false
-	end
-	if self.shouldSaveDataVersion then
-		local result = self.datastore:save("DataVersion", self.dataVersion, self.settings.maxSaveRequests)
 
-		if not result.success then
-			Error("Couldn't save 'DataVersion'")
-		end
-		self.shouldSaveDataVersion = false
-	end
-	if self.shouldSaveVersions then
-		table.insert(self.versions, self:get())
-		local result = self.datastore:save("DataVersion", self.versions, self.settings.maxSaveRequests)
+		local versions = self:getVersions()
+		table.insert(versions, data)
+		result = self.datastore:save("Versions", versions, self.settings.maxSaveRequests)
+		self.versions = versions
 
 		if not result.success then
 			Error("Couldn't save 'Versions'")
 		end
-		self.shouldSaveVersions = false
+
+		self.shouldSave = false
 	end
 	self.Saved:Fire()
 end
@@ -242,10 +200,6 @@ function ServerProfile:delete(hard)
 	local result = self.datastore:delete("ProfileData", self.settings.maxDeleteRequests)
 	if not result.success then
 		Error("Couldn't delete 'ProfileData'")
-	end
-	result = self.datastore:delete("DataVersion", self.settings.maxDeleteRequests)
-	if not result.success then
-		Error("Couldn't delete 'DataVersion'")
 	end
 	if hard then
 		result = self.datastore:delete("Versions", self.settings.maxDeleteRequests)
@@ -270,8 +224,7 @@ function ServerProfile:Destroy()
 	self.Destroyed:DisconnectAll()
 
 	self.replicator:Destroy()
-
-	setmetatable(self, {})
+	self.datastore:Destroy()
 end
 
 function ServerProfile:_applySettings(settings)
@@ -321,34 +274,41 @@ function ServerProfile:_applySettings(settings)
 end
 
 function ServerProfile:_migrate(profileData)
-	local dataVersion = #self.migrators + 1
 	if self.migrators then
-		if self.dataVersion < dataVersion then
-			for i = self.dataVersion, dataVersion do
-				local newProfileData = self.migrators[i](profileData)
-				Assert(newProfileData, "Migrator function must return a value")
-				profileData = newProfileData
+		local dataVersion = #self.migrators + 1
+		if self.migrators then
+			if self.dataVersion < dataVersion then
+				for i = self.dataVersion, dataVersion do
+					local newProfileData = self.migrators[i](profileData)
+					Assert(newProfileData, "Migrator function must return a value")
+					profileData = newProfileData
+				end
+				self.dataVersion = dataVersion
 			end
-			self.shouldSaveDataVersion = true
-			self.dataVersion = dataVersion
 		end
 	end
 	return profileData
 end
 
-function ServerProfile:_getDataVersion()
-	local success, dataVersion = self.datastore:requestIterator("DataVersion", self.settings.mexGetRequests)
-	Assert(success, "An error occured when getting DataVersion on profile [" .. self.key .. "] -", dataVersion)
-	if not dataVersion then
-		return self.migrators and #self.migrators + 1 or 1
+function ServerProfile:_get()
+	local result = self.datastore:request("ProfileData", self.settings.maxGetRequests)
+	Assert(result.success, "An error occured when getting 'ProfileData' [" .. self.key .. "] -", result.message)
+	local data = result.data
+	if not data then
+		data = {
+			data = self.default,
+			version = 1
+		}
+	else
+		data.data = self:_migrate(data.data)
 	end
-	return dataVersion
+	return data
 end
 
 function ServerProfile:_getVersions()
-	local success, data = self.datastore:requestIterator("Versions", self.settings.mexGetRequests)
-	Assert(success, "An error occured when getting Versions of profile [" .. self.key .. "] -", data)
-	return data or {}
+	local result = self.datastore:request("Versions", self.settings.maxGetRequests)
+	Assert(result.success, "An error occured when getting 'Versions' [" .. self.key .. "] -", result.message)
+	return result or {}
 end
 
 game:BindToClose(function()

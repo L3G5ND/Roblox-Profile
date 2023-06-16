@@ -24,9 +24,6 @@ end
 
 updateSpeed(Profile:get().Speed)
 Profile.Changed:Connect('Speed', updateSpeed)
-Profile.Changed:Connect(function(...)
-    print(...)
-end)
 Profile.Destroyed:Connect(function()
     print('Destroyed')
 end)

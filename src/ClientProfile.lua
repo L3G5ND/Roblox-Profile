@@ -1,14 +1,10 @@
-local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
 local Package = script.Parent
 
 local Util = Package.Util
 local Assert = require(Util.Assert)
-local Assign = require(Util.Assign)
 local Error = require(Util.Error)
-local DeepEqual = require(Util.DeepEqual)
-local Copy = require(Util.Copy)
 local TypeMarker = require(Util.TypeMarker)
 
 local Replicator = require(Package.Replicator)
@@ -33,6 +29,7 @@ local ProfileType = TypeMarker.Mark("[Profile]")
 
 local ClientProfile = {}
 local Profiles = {}
+local LoadingProfiles = {}
 
 function ClientProfile.new(plrOrKey)
 	local isPlayer = typeof(plrOrKey) == "Instance" and plrOrKey.ClassName == "Player"
@@ -43,20 +40,21 @@ function ClientProfile.new(plrOrKey)
 
 	local key = isPlayer and 'profile_'..plrOrKey.UserId or plrOrKey
 
-	if Profiles[key] ~= nil then
-		if Profiles[key] == false then
-			expect(function()
-				return Profiles[key] == true
-			end, "Wasn't able to get profile '"..key.."'")
-		end
+	if Profiles[key] then
 		return Profiles[key]
 	end
-	Profiles[key] = false
+	if LoadingProfiles[key] then
+		expect(function()
+			return Profiles[key]
+		end, "Wasn't able to get profile '"..key.."'")
+		return Profiles[key]
+	end
+	LoadingProfiles[key] = true
 
 	local self = setmetatable({}, {
 		__index = ClientProfile,
 		__tostring = function(self)
-			return ProfileType..' - ['..self.key..']'
+			return "[Profile] - ["..self.key.."]"
 		end
 	})
 
@@ -66,14 +64,11 @@ function ClientProfile.new(plrOrKey)
 
 	self.replicator = Replicator.new(self.key)
 
-	expect(function()
-		return self.replicator:get()._isLoaded == true
-	end, "Couldn't load profile in time '"..key.."'")
-
 	self.Changed = self.replicator.Changed
 	self.Destroyed = self.replicator.Destroyed
 
 	Profiles[self.key] = self
+	LoadingProfiles[self.key] = nil
 
 	return self
 end
@@ -86,7 +81,7 @@ function ClientProfile.is(profile)
 end
 
 function ClientProfile:get()
-	return self.replicator:get().data
+	return self.replicator:get()
 end
 
 return ClientProfile.new(plr)

@@ -4,7 +4,11 @@ local Profile = RunService:IsServer() and require(script.ServerProfile) or requi
 
 local ProfileAPI = {}
 
-ProfileAPI.new = Profile.new
+if RunService:IsServer() then
+    ProfileAPI.new = Profile.new
+else
+    ProfileAPI = Profile
+end
 
 ProfileAPI.is = Profile.is
 
