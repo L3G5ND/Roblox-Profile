@@ -3,83 +3,70 @@ local DSS = game:GetService("DataStoreService")
 local Util = script.Parent.Util
 local Assert = require(Util.Assert)
 
-local Datastore = {}
+local DataStore = {}
 
-function Datastore.new(key)
-	local self = setmetatable({}, { __index = Datastore })
-	self.isDestroyed = false
-	self.datastore = DSS:GetDataStore(key)
+function DataStore.new(key)
+	local self = setmetatable({}, {
+		__index = DataStore,
+		__tostring = function()
+			return "[DataStore]"
+		end,
+	})
+
+	self.key = nil
+	self.dataStore = DSS:GetDataStore(key)
+	self.keyDataStore = DSS:GetOrderedDataStore(key)
+	self.orderedDataStore = DSS:GetOrderedDataStore(key)
+
 	return self
 end
 
-function Datastore:request(key, maxIterations)
-	if self.isDestroyed then
-		return
-	end
-	Assert(typeof(key) == 'string', "Invalid argument #1 (must be a 'string'")
-	local success, message, data
-	for _ = 1, maxIterations do
-		success, message = pcall(function()
-			self.datastore:UpdateAsync(key, function(value)
-				data = value
-				return value
-			end)
-		end)
-		if success then
-			break
+function DataStore:get()
+	local data
+	local success, message = pcall(function()
+		local keyStore = self.keyDataStore:GetSortedAsync(false, 1):GetCurrentPage()[1]
+		if not keyStore then
+			return
 		end
-	end
-	return {
-		success = success,
-		message = message,
-		data = data
-	}
-end
-
-function Datastore:save(key, value, maxIterations)
-	if self.isDestroyed then
-		return
-	end
-	Assert(typeof(key) == 'string', "Invalid argument #1 (must be a 'string'")
-	local success, message
-	for _ = 1, maxIterations do
-		success, message = pcall(function()
-			self.datastore:UpdateAsync(key, function()
-				return value
-			end)
+		self.key = keyStore.value
+		self.dataStore:UpdateAsync(self.key, function(value)
+			data = value
 		end)
-		if success then
-			break
-		end
-	end
-	return {
-		success = success,
-		message = message
-	}
+	end)
+	Assert(success, message)
+	return data
 end
 
-function Datastore:delete(key, maxIterations)
-	if self.isDestroyed then
-		return
-	end
-	Assert(typeof(key) == 'string', "Invalid argument #1 (must be a 'string'")
-	local success, message
-	for _ = 1, maxIterations do
-		success, message = pcall(function()
-			self.datastore:RemoveAsync(key)
+function DataStore:set(value)
+	Assert(typeof(value) == "table", "Invalid argument #1 (must be a 'table')")
+	local success, message = pcall(function()
+		local key = self.key and self.key + 1 or 1
+		self.dataStore:UpdateAsync(key, function()
+			return value
 		end)
-		if success then
-			break
-		end
-	end
-	return {
-		success = success,
-		message = message
-	}
+		self.keyDataStore:SetAsync(key, key)
+	end)
+	Assert(success, message)
 end
 
-function Datastore:Destroy()
-	self.isDestroyed = true
+function DataStore:getPage(pageSize, ascending, minValue, maxValue)
+	Assert(typeof(pageSize) == "number", "Invalid argument #1 (must be a 'number')")
+	Assert(typeof(ascending) == "boolean", "Invalid argument #2 (must be a 'boolean')")
+	local data
+	local success, message = pcall(function()
+		data = self.keyDataStore:GetSortedAsync(ascending, pageSize, minValue, maxValue):GetCurrentPage()
+	end)
+	Assert(success, message)
+	return data
 end
 
-return Datastore
+function DataStore:index(key, number)
+	Assert(typeof(key) == "string", "Invalid argument #1 (must be a 'string')")
+	Assert(typeof(number) == "number" and number >= 0, "Invalid argument #2 (must be a positive 'number')")
+	local success, message = pcall(function()
+		self.orderedDataStore:SetAsync(key, number)
+	end)
+	Assert(success, message)
+end
+
+return DataStore

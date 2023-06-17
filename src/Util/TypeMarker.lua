@@ -1,21 +1,22 @@
 local TypeMarker = {}
-local Internal = {}
+local Markers = {}
 
-TypeMarker.Mark = function(typeMarker)
-	assert(typeof(typeMarker) == "string", string.format("typeMarker must be a string, got %s", typeof(typeMarker)))
+TypeMarker.Mark = function(name)
+	assert(typeof(name) == "string", string.format("Invalid argument #1 (must be a 'string')"))
 
 	local marker = newproxy(true)
 
 	getmetatable(marker).__tostring = function()
-		return ("TypeMarker(%s)"):format(typeMarker)
+		return name
 	end
 
-	Internal[marker] = marker
+	Markers[marker] = true
+
 	return marker
 end
 
 TypeMarker.Is = function(typeMarker)
-	return Internal[typeMarker]
+	return Markers[typeMarker] == true
 end
 
-return setmetatable(TypeMarker, { Internal })
+return TypeMarker

@@ -2,41 +2,31 @@ local Players = game:GetService('Players')
 local RS = game:GetService('ReplicatedStorage')
 local Profile = require(RS.Profile)
 
-local defaultData = {
-    Speed = 16,
-    a = 1,
-    b = 2,
-    c = {
-        a = 1,
-        b = 2
-    }
-}
+local SpeedLeaderboardProfile = Profile.new('SpeedLeaderboard')
+
+print(SpeedLeaderboardProfile:getPage(10))
 
 local plrAdded = function(player)
     local playerProfile = Profile.new(player, {
-        default = defaultData,
-        studioSave = true,
+        default = {
+            Speed = 16
+        },
     })
+    
     playerProfile.Saved:Connect(function()
-        print('Saved')
-    end)
-    playerProfile.Deleted:Connect(function()
-        print('Deleted')
+        print('[Saved]: '..player.Name)
     end)
     playerProfile.Changed:Connect('Speed', function(speed, oldSpeed)
         print('[New Speed]: '..player.Name..' - New: '..speed..' - Old: '..oldSpeed)
     end)
-    local i = 1
+
     while task.wait(1) do
+        local nextSpeed = playerProfile:get().Speed + 1
         playerProfile:set({
-            Speed = playerProfile:get().Speed + 1
+            Speed = nextSpeed
         })
-        i += 1
-        if i >= 100 then
-            break
-        end
+        SpeedLeaderboardProfile:index(player.UserId, nextSpeed)
     end
-    playerProfile:Destroy()
 end
 
 Players.PlayerAdded:Connect(plrAdded)

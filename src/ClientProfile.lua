@@ -33,12 +33,9 @@ local LoadingProfiles = {}
 
 function ClientProfile.new(plrOrKey)
 	local isPlayer = typeof(plrOrKey) == "Instance" and plrOrKey.ClassName == "Player"
-	Assert(
-		isPlayer or typeof(plrOrKey) == "string",
-		"Invalid argument #1 (must be a 'Player' object or type 'string')"
-	)
+	Assert(isPlayer or typeof(plrOrKey) == "string", "Invalid argument #1 (must be a 'Player' instance or a 'string')")
 
-	local key = isPlayer and 'profile_'..plrOrKey.UserId or plrOrKey
+	local key = isPlayer and "profile_" .. plrOrKey.UserId or plrOrKey
 
 	if Profiles[key] then
 		return Profiles[key]
@@ -46,7 +43,7 @@ function ClientProfile.new(plrOrKey)
 	if LoadingProfiles[key] then
 		expect(function()
 			return Profiles[key]
-		end, "Wasn't able to get profile '"..key.."'")
+		end, "Wasn't able to get profile '" .. key .. "'", 30)
 		return Profiles[key]
 	end
 	LoadingProfiles[key] = true
@@ -54,8 +51,8 @@ function ClientProfile.new(plrOrKey)
 	local self = setmetatable({}, {
 		__index = ClientProfile,
 		__tostring = function(self)
-			return "[Profile] - ["..self.key.."]"
-		end
+			return "[Profile] - [" .. self.key .. "]"
+		end,
 	})
 
 	self._type = ProfileType
