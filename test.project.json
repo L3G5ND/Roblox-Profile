@@ -10,6 +10,9 @@
         },
         "Profile": {
           "$path": "src"
+        },
+        "Settings": {
+          "$path": "Tests/Settings.lua"
         }
       },
   

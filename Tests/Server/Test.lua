@@ -1,5 +1,6 @@
 local Players = game:GetService('Players')
 local RS = game:GetService('ReplicatedStorage')
+
 local Profile = require(RS.Profile)
 
 local SpeedLeaderboardProfile = Profile.new('SpeedLeaderboard')
@@ -33,3 +34,5 @@ Players.PlayerAdded:Connect(plrAdded)
 for _, plr in pairs(Players:GetPlayers()) do
     plrAdded(plr)
 end
+
+return true

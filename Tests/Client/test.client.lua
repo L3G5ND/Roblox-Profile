@@ -1,4 +1,5 @@
 local RS = game:GetService('ReplicatedStorage')
+
 local Profile = require(RS.Profile)
 
 local plr = game.Players.LocalPlayer
@@ -24,3 +25,5 @@ end
 
 updateSpeed(Profile:get().Speed)
 Profile.Changed:Connect('Speed', updateSpeed)
+
+return true

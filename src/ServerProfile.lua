@@ -15,7 +15,7 @@ local Signal = require(Package.Signal)
 local DataStore = require(Package.DataStore)
 local None = require(Package.None)
 
-local isStudio = RunService:IsStudio()
+local IsStudio = RunService:IsStudio()
 
 local function removeNone(tbl)
 	for key, value in tbl do
@@ -182,7 +182,7 @@ function ServerProfile:save()
 	if self._isDestroyed then
 		return
 	end
-	if isStudio and not self.settings.studioSave then
+	if IsStudio and not self.settings.studioSave then
 		return false
 	end
 	self._lastSaveTime = os.clock()
