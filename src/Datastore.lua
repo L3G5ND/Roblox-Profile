@@ -5,6 +5,7 @@ local Package = script.Parent
 
 local Util = script.Parent.Util
 local Assert = require(Util.Assert)
+local Copy = require(Util.Copy)
 
 local DataStoreServiceReplica = require(Package.DataStoreServiceReplica)
 
@@ -25,128 +26,180 @@ if shouldUseReplica then
 	DSS = DataStoreServiceReplica
 end
 
+local Settings = {
+	RequestCooldown = 5,
+	MaxSaveAttempts = 10,
+	ForceSessionAttempts = 5,
+	ForceSessionTime = 60 * 15
+}
+
 local DataStore = {}
 DataStore.SessionId = game.PlaceId..'/'..game.JobId
+DataStore._getQueue = {}
+DataStore._setQueue = {}
 
-function DataStore.new(name)
+function DataStore.new(name, sessionLock)
 	local self = setmetatable({}, {__index = DataStore})
+	self.name = name
+	self.sessionLock = sessionLock
 	self.dataStore = DSS:GetDataStore(name)
 	self.versionDataStore = DSS:GetOrderedDataStore(name)
-	self.version = self:_getVersion()
 	return self
 end
 
-function DataStore:get()
-	local isCorrupted = false
+function DataStore:get(default)
+	local SessionId = DataStore.SessionId
+
 	local hasSession = false
-
-	local data
-	self.dataStore:UpdateAsync(self.version, function(value, userIds, metadata)
-		if value and typeof(value) ~= 'table' then
-			isCorrupted = true
-			return
+	local forceSession = false
+	
+	local fetchedData
+	local newProfile = false
+	for i = 1, Settings.ForceSessionAttempts+1 do
+		local version = self:_getVersion()
+		self.dataStore:UpdateAsync(version, function(data)
+			if not data then
+				data = default
+				newProfile = true
+			end
+			if self.sessionLock then
+				if forceSession then
+					hasSession = true
+				elseif data.Metadata then
+					if data.Metadata.LastUpdate and (os.time() - data.Metadata.LastUpdate >= Settings.ForceSessionTime) then
+						hasSession = true
+					elseif data.Metadata.SessionId == nil or data.Metadata.SessionId == SessionId then
+						hasSession = true
+					end
+				else
+					hasSession = true
+				end
+				if hasSession then
+					data.Metadata = {
+						SessionId = SessionId,
+						LastUpdate = os.time()
+					}
+					fetchedData = data
+					return data
+				end
+			else
+				if not data then
+					data = default
+					newProfile = true
+				end
+				data.Metadata = {
+					LastUpdate = os.time()
+				}
+				fetchedData = data
+				hasSession = true
+				return data
+			end
+		end)
+		if hasSession then
+			break
 		end
-		data = value
-		if value.sessionId == nil or value.sessionId == DataStore.SessionId then
-			value.sessionId = DataStore.SessionId
-			hasSession = true
-			return value
-		else
-			return
+		if i >= Settings.ForceSessionAttempts then
+			forceSession = true
+			continue
 		end
-	end)
-
-	if isCorrupted then
-		self:setVersion(self:_getVersion())
-		return self:get()
+		task.wait(Settings.RequestCooldown)
 	end
 
-	if not hasSession then
-		print('doesnt have session')
-	end
-
-	return data
+	return fetchedData, newProfile
 end
 
-function DataStore:set(value)
+function DataStore:set(value, removeSession)
 	Assert(typeof(value) == "table", "Invalid argument #1 (must be a 'table')")
-	local isCorrupted = false
-	local hasSession = false
-	local version = self.version + 1
-	self.dataStore:UpdateAsync(version, function(_, userIds, metadata)
-		if value and typeof(value) ~= 'table' then
-			isCorrupted = true
-			return
+	value = Copy(value)
+
+	local SessionId = DataStore.SessionId
+	
+	local Metadata
+	local didSave
+	for _ = 1, Settings.MaxSaveAttempts do
+		local version = self:_getVersion() + 1
+		if self.sessionLock then
+			pcall(function()
+				self.dataStore:UpdateAsync(version-1, function(data)
+					if data.Metadata then
+						if data.Metadata.SessionId == SessionId then
+							Metadata = data.Metadata
+						end
+					else
+						Metadata = {}
+					end
+				end)
+			end)
 		end
-		if value.sessionId == DataStore.SessionId then
-			value.sessionId = nil
-			hasSession = true
-			return value
-		else
-			return
+		if Metadata or not self.sessionLock then
+			local success = pcall(function()
+				self.dataStore:UpdateAsync(version, function()
+					if self.sessionLock then
+						if removeSession then
+							value.Metadata = Metadata
+							value.Metadata.SessionId = nil
+							return value
+						else
+							value.Metadata = Metadata
+							value.Metadata.LastUpdate = os.time()
+							return value
+						end
+					else
+						return value
+					end
+				end)
+			end)
+			if success then
+				didSave = true
+			end
 		end
-	end)
-
-	if isCorrupted then
-		self:setVersion(self:_getVersion())
-		return self:set(value)
+		if didSave then
+			local success = pcall(function()
+				self.versionDataStore:SetAsync(version, version)
+			end)
+			if success then
+				return true
+			end
+		end
+		task.wait(Settings.RequestCooldown)
 	end
-
-	if not hasSession then
-		print('doesnt have session')
-	end
-
-	self.versionDataStore:SetAsync(version, version)
-end
-
-function DataStore:setVersion(version)
-	local currentVersion = self:_getVersion()
-	Assert(version < currentVersion, "Invalid argument #1 (must be less that the 'DataStores' current version)")
-	for i = 1, currentVersion - version do
-		self.versionDataStore:RemoveAsync(currentVersion - i)
-		self.dataStore:RemoveAsync(currentVersion - i)
-	end
-	self.version = version
+	return false
 end
 
 function DataStore:_getVersion()
-	local keyStore = self.versionDataStore:GetSortedAsync(false, 1):GetCurrentPage()[1]
-	if not keyStore then
-		return 0
+	local versionStore = self.versionDataStore:GetSortedAsync(false, 1):GetCurrentPage()[1]
+	if not versionStore then
+		self.versionDataStore:SetAsync(1, 1)
+		return 1
 	else
-		return keyStore.value
+		return versionStore.value
 	end
 end
 
 local OrderedDataStore = {}
 
 function OrderedDataStore.new(name)
-	local self = setmetatable({}, {__index = DataStore})
-	self.orderedDataStore = DSS:GetOrderedDataStore(name, 'Ordered')
+	local self = setmetatable({}, {__index = OrderedDataStore})
+	self.orderedDataStore = DSS:GetOrderedDataStore(name)
 	return self
 end
 
 function OrderedDataStore:getPage(pageSize, ascending, minValue, maxValue)
 	Assert(typeof(pageSize) == "number", "Invalid argument #1 (must be a 'number')")
 	Assert(typeof(ascending) == "boolean", "Invalid argument #2 (must be a 'boolean')")
-	local data
-	local success, message = pcall(function()
-		data = self.versionDataStore:GetSortedAsync(ascending, pageSize, minValue, maxValue):GetCurrentPage()
-	end)
-	Assert(success, message)
-	return data
+	return self.orderedDataStore:GetSortedAsync(ascending, pageSize, minValue, maxValue):GetCurrentPage()
 end
 
 function OrderedDataStore:index(key, number)
 	Assert(typeof(key) == "string", "Invalid argument #1 (must be a 'string')")
 	Assert(typeof(number) == "number" and number >= 0, "Invalid argument #2 (must be a positive 'number')")
-	local success, message = pcall(function()
-		self.orderedDataStore:SetAsync(key, number)
-	end)
-	Assert(success, message)
+	self.orderedDataStore:SetAsync(key, number)
 end
 
 return {
-	DataStore = DataStore,
+	useStoreReplica = function(value)
+		DSS = value and DataStoreServiceReplica or game:GetService('DataStoreService')
+	end,
+	NormalDataStore = DataStore,
 	OrderedDataStore = OrderedDataStore
 }

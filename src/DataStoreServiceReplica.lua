@@ -1,3 +1,6 @@
+local Util = script.Parent.Util
+local Copy = require(Util.Copy)
+
 local DataStoreKeyInfo = {}
 
 function DataStoreKeyInfo.new()
@@ -19,8 +22,13 @@ function DataStoreKeyInfo:GetUserIds()
 end
 
 local DataStore = {}
+local DataStores = {}
 
 function DataStore.new(name, scope)
+	scope = scope or "global"
+	if DataStores[name..scope] then
+		return DataStores[name..scope]
+	end
 	local self = setmetatable({}, {
 		__index = DataStore,
 		__tostring = function()
@@ -32,6 +40,7 @@ function DataStore.new(name, scope)
 	self.data = {}
 	self._keyInfos = {}
 	self._getCache = {}
+	DataStores[name..scope] = self
 	return self
 end
 
@@ -49,7 +58,7 @@ function DataStore:GetAsync(key)
 			self._getCache[key] = nil
 		end)
 	end
-	return data, self._keyInfos[key]
+	return Copy(data), Copy(self._keyInfos[key])
 end
 
 function DataStore:RemoveAsync(key)
@@ -60,7 +69,7 @@ function DataStore:RemoveAsync(key)
 	end
 	self.data[key] = nil
 	self._getCache[key] = nil
-	return data, self._keyInfos[key]
+	return Copy(data), Copy(self._keyInfos[key])
 end
 
 function DataStore:SetAsync(key, value, userIds)
@@ -81,7 +90,7 @@ function DataStore:UpdateAsync(key, transformFunction)
 		self._keyInfos[key] = DataStoreKeyInfo.new()
 	end
 	local keyInfo = self._keyInfos[key]
-	local data, userIds, metadata = transformFunction(self.data[key], keyInfo)
+	local data, userIds, metadata = transformFunction(Copy(self.data[key]), Copy(keyInfo))
 	if not data then
 		return
 	else
@@ -89,7 +98,7 @@ function DataStore:UpdateAsync(key, transformFunction)
 		keyInfo._userIds = userIds or {}
 		keyInfo._metadata = metadata or {}
 		keyInfo.UpdatedTime = math.floor(os.time() * 1000)
-		return data, keyInfo
+		return Copy(data), Copy(keyInfo)
 	end
 end
 
@@ -109,7 +118,13 @@ function DataStorePages.new(data, context)
 	for key, value in data do
 		table.insert(sorted, { key = key, value = value })
 	end
-	table.sort(sorted, function(a, b) return a.value < b.value end)
+	table.sort(sorted, function(a, b)
+		if self._ascending then
+			return a.value < b.value
+		else
+			return a.value > b.value
+		end
+	end)
 
 	for _, data in sorted do
 		if data.value >= self._minValue and data.value <= self._maxValue then
@@ -140,8 +155,13 @@ function DataStorePages:AdvanceToNextPageAsync()
 end
 
 local OrderedDataStore = {}
+local OrderedDataStores = {}
 
 function OrderedDataStore.new(name, scope)
+	scope = scope or "global"
+	if OrderedDataStores[name..scope] then
+		return OrderedDataStores[name..scope]
+	end
 	local self = setmetatable({}, {
 		__index = OrderedDataStore,
 		__tostring = function()
@@ -152,6 +172,7 @@ function OrderedDataStore.new(name, scope)
 	self.scope = scope
 	self.data = {}
 	self._getCache = {}
+	OrderedDataStores[name..scope] = self
 	return self
 end
 
@@ -179,7 +200,7 @@ function OrderedDataStore:GetAsync(key)
 			self._getCache[key] = nil
 		end)
 	end
-	return data
+	return Copy(data)
 end
 
 function OrderedDataStore:RemoveAsync(key)
@@ -190,7 +211,7 @@ function OrderedDataStore:RemoveAsync(key)
 	end
 	self.data[key] = nil
 	self._getCache[key] = nil
-	return data
+	return Copy(data)
 end
 
 function OrderedDataStore:SetAsync(key, value)
@@ -205,7 +226,7 @@ function OrderedDataStore:UpdateAsync(key, transformFunction)
 		return
 	else
 		self.data[key] = data
-		return data
+		return Copy(data)
 	end
 end
 

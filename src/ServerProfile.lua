@@ -44,57 +44,155 @@ local defaultSettings = {
 	default = {},
 	migrators = {},
 	saveInterval = nil,
+	autoKick = true
 }
 
-local ProfileType = TypeMarker.Mark("[Profile]")
+local Profile = {}
+local OrderedProfile = {}
 
-local ServerProfile = {}
-local Profiles = {}
+local ProfileType = TypeMarker.Mark("[Profile]")
+local OrderedProfileType = TypeMarker.Mark("[OrderedProfile]")
+
+Profile.Profiles = {}
 local LoadingProfiles = {}
 
-function ServerProfile.new(plrOrKey, settings)
+function Profile.ordered(key)
+	Assert(typeof(key) == "string", "Invalid argument #1 (must be a 'string')")
+	local self = setmetatable({
+		_type = OrderedProfileType
+	}, {
+		__index = OrderedProfile,
+		__tostring = function(self)
+			return "[Profile] - (Ordered)[" .. self.key .. "]"
+		end,
+	})
+	self.key = key
+	self.dataStore = DataStore.OrderedDataStore.new(self.key)
+	return self
+end
+
+function OrderedProfile:getPage(pageSize, ascending, minValue, maxValue)
+	if ascending == nil then
+		ascending = false
+	end
+	Assert(typeof(pageSize) == "number", "Invalid argument #1 (must be a 'number')")
+	Assert(typeof(ascending) == "boolean", "Invalid argument #2 (must be a 'boolean')")
+	Assert(minValue == nil or typeof(minValue) == "number", "Invalid argument #3 (must be a 'number')")
+	Assert(maxValue == nil or typeof(maxValue) == "number", "Invalid argument #4 (must be a 'boolean')")
+	return self.dataStore:getPage(pageSize, ascending, minValue, maxValue)
+end
+
+function OrderedProfile:index(key, number)
+	key = tostring(key)
+	Assert(typeof(key) == "string", "Invalid argument #1 (must be a 'string' or a 'number')")
+	Assert(typeof(number) == "number" and number >= 0, "Invalid argument #2 (must be a positive 'number')")
+	self.dataStore:index(key, number)
+end
+
+local function validateSetting(settings, setting, settingType)
+	Assert(
+		settings[setting] == nil or typeof(settings[setting]) == settingType,
+		"Invalid argument #2 (settings."..setting.." must be of a '"..settingType.."')"
+	)
+	if settings[setting] == nil then
+		if defaultSettings[setting] then
+			settings[setting] = defaultSettings[setting]
+		end
+	end
+end
+
+function Profile.new(plrOrKey, settings)
 	local isPlayer = typeof(plrOrKey) == "Instance" and plrOrKey.ClassName == "Player"
 	Assert(isPlayer or typeof(plrOrKey) == "string", "Invalid argument #1 (must be a 'Player' instance or 'string')")
 
 	local key = isPlayer and "profile_" .. plrOrKey.UserId or plrOrKey
 
-	if Profiles[key] then
-		return Profiles[key]
+	if Profile.Profiles[key] then
+		if Profile.Profiles[key]._isDestroyed then
+			while Profile.Profiles[key] do
+				task.wait()
+			end
+		else
+			return Profile.Profiles[key]
+		end
 	end
 	if LoadingProfiles[key] then
-		while not Profiles[key] do
+		while not Profile.Profiles[key] do
 			task.wait()
 		end
-		return Profiles[key]
+		return Profile.Profiles[key]
 	end
 	LoadingProfiles[key] = true
 
-	local self = setmetatable({}, {
-		__index = ServerProfile,
+	local self = setmetatable({
+		_type = ProfileType
+	}, {
+		__index = Profile,
 		__tostring = function(self)
 			return "[Profile] - [" .. self.key .. "]"
 		end,
 	})
 
-	self._type = ProfileType
+	if isPlayer then
+		self.player = plrOrKey
+	end
+
+	local useSessionLock = isPlayer
+	if settings.useSessionLock == false then
+		useSessionLock = false
+	else
+		useSessionLock = true
+	end
 
 	self.key = key
-	self.dataStore = DataStore.new(self.key)
+	self.dataStore = DataStore.NormalDataStore.new(self.key, useSessionLock)
 
-	self:_applySettings(settings)
+	settings = settings or {}
 
-	self.shouldSaveDataStore = false
-	self.shouldSaveOrderedDataStore = false
+	validateSetting(settings, 'studioSave', 'boolean')
+	validateSetting(settings, 'default', 'table')
+	validateSetting(settings, 'mergeWithDefault', 'boolean')
+	validateSetting(settings, 'migrators', 'table')
+	validateSetting(settings, 'saveInterval', 'number')
+	validateSetting(settings, 'autoKick', 'boolean')
 
-	local profileData = self:_get()
+	if settings.migrators then
+		for i, migrator in settings.migrators do
+			Assert(
+				typeof(migrator) == "function",
+				"Invalid argument #2 (settings.migrator[" .. i .. "] must be a 'function')"
+			)
+		end
+	end
+
+	self.settings = settings
+	self.default = settings.default
+	self.migrators = settings.migrators
+
+	self.shouldSave = false
+
+	local profileData
+	local newProfile
+	local success, message = pcall(function()
+		profileData, newProfile = self.dataStore:get({
+			data = self.default,
+			version = 1
+		})
+	end)
+	if not success then
+		if self.player then
+			self.player:Kick('An error occured when getting profile data. (Please try again)')
+		end
+		return
+	end
+	
 	self.version = profileData.version
 	self.data = self:_migrate(profileData.data)
-	self.orderedData = {}
 
 	self._lastSaveTime = os.clock()
 	self._isDestroyed = false
 
-	if self.data == self.default then
+	if newProfile then
 		self.shouldSave = true
 	else
 		if self.settings.mergeWithDefault then
@@ -112,24 +210,17 @@ function ServerProfile.new(plrOrKey, settings)
 	self.Saved = Signal.new()
 	self.Destroyed = self.replicator.Destroyed
 
-	Profiles[self.key] = self
+	Profile.Profiles[self.key] = self
 	LoadingProfiles[self.key] = nil
 
 	return self
 end
 
-function ServerProfile.is(profile)
-	if typeof(profile) == "table" then
-		return profile._type == ProfileType
-	end
-	return false
-end
-
-function ServerProfile:get()
+function Profile:get()
 	return Copy(self.data)
 end
 
-function ServerProfile:set(data, hard)
+function Profile:set(data, hard)
 	Assert(typeof(data) == "table", "Invalid argument #1 (must be a 'table')")
 
 	local oldProfileData = self.data
@@ -142,7 +233,7 @@ function ServerProfile:set(data, hard)
 	removeNone(newProfileData)
 
 	if not DeepEqual(oldProfileData, newProfileData) then
-		self.shouldSaveDataStore = true
+		self.shouldSave = true
 		self.data = newProfileData
 		if self.replicator then
 			self.replicator:set(newProfileData)
@@ -150,118 +241,38 @@ function ServerProfile:set(data, hard)
 	end
 end
 
-function ServerProfile:merge(data)
+function Profile:merge(data)
 	Assert(typeof(data) == "table", "Invalid argument #1 (must be a 'table')")
 	self:set(merge(self:get(), data), true)
 end
 
-function ServerProfile:getPage(pageSize, ascending, minValue, maxValue)
-	if ascending == nil then
-		ascending = false
-	end
-	Assert(typeof(pageSize) == "number", "Invalid argument #1 (must be a 'number')")
-	Assert(typeof(ascending) == "boolean", "Invalid argument #2 (must be a 'boolean')")
-	Assert(minValue == nil or typeof(minValue) == "number", "Invalid argument #3 (must be a 'number')")
-	Assert(maxValue == nil or typeof(maxValue) == "number", "Invalid argument #4 (must be a 'boolean')")
-	return self.dataStore:getPage(pageSize, ascending, minValue, maxValue)
-end
-
-function ServerProfile:index(key, number)
-	key = tostring(key)
-	Assert(typeof(key) == "string", "Invalid argument #1 (must be a 'string' or a 'number')")
-	Assert(typeof(number) == "number" and number >= 0, "Invalid argument #2 (must be a positive 'number')")
-	self.orderedData[key] = number
-	self.shouldSaveOrderedDataStore = true
-end
-
-function ServerProfile:setVisibility(players)
+function Profile:setVisibility(players)
 	self.replicator:setPlayers(players)
 end
 
-function ServerProfile:save()
-	if self._isDestroyed then
-		return
-	end
+function Profile:save(removeSession)
 	if IsStudio and not self.settings.studioSave then
-		return false
+		return true
 	end
 	self._lastSaveTime = os.clock()
-	if self.shouldSaveDataStore then
-		self.dataStore:set({
-			data = self:get(),
-			version = self.version,
-		})
-		self.shouldSaveDataStore = false
-	end
-	if self.shouldSaveOrderedDataStore then
-		for key, number in self.orderedData do
-			self.dataStore:index(key, number)
-			self.shouldSaveOrderedDataStore = false
+	if self.shouldSave or removeSession then
+		local success = pcall(function()
+			self.dataStore:set({
+				data = self:get(),
+				version = self.version
+			}, removeSession)
+		end)
+		if success then
+			self.Saved:Fire()
+			self.shouldSave = false
+		else
+			return false
 		end
 	end
-	self.Saved:Fire()
+	return true
 end
 
-function ServerProfile:Destroy()
-	if not Profiles[self.key] then
-		return
-	end
-	Profiles[self.key] = nil
-
-	self:save()
-
-	self.Changed:DisconnectAll()
-	self.Saved:DisconnectAll()
-	self.Destroyed:DisconnectAll()
-
-	self.replicator:Destroy()
-
-	self._isDestroyed = true
-end
-
-function ServerProfile:_applySettings(settings)
-	settings = settings or {}
-	Assert(
-		not settings.studioSave or typeof(settings.studioSave) == "boolean",
-		"Invalid argument #2 (settings.studioSave must be of a 'boolean')"
-	)
-	Assert(
-		not settings.default or (typeof(settings.default) == "table"),
-		"Invalid argument #2 (settings.default must be of a 'table')"
-	)
-	Assert(
-		not settings.mergeWithDefault or (typeof(settings.mergeWithDefualt) == "boolean"),
-		"Invalid argument #2 (settings.mergeWithDefault must be of a 'boolean')"
-	)
-	Assert(
-		not settings.migrators or typeof(settings.migrators) == "table",
-		"Invalid argument #2 (settings.migrators must be of a 'table')"
-	)
-	Assert(
-		not settings.saveInterval or typeof(settings.saveInterval) == "number",
-		"Invalid argument #2 (settings.saveInterval must be of a 'number')"
-	)
-
-	if settings.migrators then
-		for i, migrator in settings.migrators do
-			Assert(
-				typeof(migrator) == "function",
-				"Invalid argument #2 (settings.migrator[" .. i .. "] must be a 'function')"
-			)
-		end
-	end
-
-	self.settings = {
-		studioSave = settings.studioSave or defaultSettings.studioSave,
-		mergeWithDefault = settings.mergeWithDefault == nil and defaultSettings.mergeWithDefault
-			or settings.mergeWithDefualt,
-		saveInterval = settings.saveInterval or defaultSettings.saveInterval,
-	}
-	self.default = settings.default
-	self.migrators = settings.migrators
-end
-
-function ServerProfile:_migrate(profileData)
+function Profile:_migrate(profileData)
 	if self.migrators then
 		local version = #self.migrators + 1
 		if self.migrators then
@@ -278,32 +289,52 @@ function ServerProfile:_migrate(profileData)
 	return profileData
 end
 
-function ServerProfile:_get()
-	local data = self.dataStore:get()
-	if not data then
-		data = {
-			data = self.default,
-			version = 1,
-		}
+function Profile:Destroy()
+	if self._isDestroyed then
+		return
 	end
-	return data
+	self._isDestroyed = true
+
+	self:save(true)
+
+	self.Changed:DisconnectAll()
+	self.Saved:DisconnectAll()
+	self.Destroyed:DisconnectAll()
+
+	self.replicator:Destroy()
+
+	Profile.Profiles[self.key] = nil
+end
+
+function Profile.is(profile)
+	if typeof(profile) == "table" then
+		return profile._type == ProfileType
+	end
+	return false
+end
+
+function Profile.isOrdered(profile)
+	if typeof(profile) == "table" then
+		return profile._type == OrderedProfileType
+	end
+	return false
 end
 
 game:BindToClose(function()
-	for _, profile in Profiles do
+	for _, profile in Profile.Profiles do
 		profile:Destroy()
 	end
 end)
 
 Players.PlayerRemoving:Connect(function(plr)
-	local profile = Profiles["profile_" .. plr.UserId]
+	local profile = Profile.Profiles["profile_" .. plr.UserId]
 	if profile then
 		profile:Destroy()
 	end
 end)
 
 RunService.Heartbeat:Connect(function()
-	for _, profile in Profiles do
+	for _, profile in Profile.Profiles do
 		local saveInterval = profile.settings.saveInterval
 		if saveInterval then
 			if os.clock() - profile._lastSaveTime >= saveInterval then
@@ -315,8 +346,8 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
-return setmetatable(ServerProfile, {
+return setmetatable(Profile, {
 	__call = function(_, ...)
-		return ServerProfile.new(...)
+		return Profile.new(...)
 	end,
 })

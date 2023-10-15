@@ -3,17 +3,31 @@ local RS = game:GetService('ReplicatedStorage')
 
 local Profile = require(RS.Profile)
 
-local SpeedLeaderboardProfile = Profile.new('SpeedLeaderboard')
+local ClientScript = script.Client
 
-print(SpeedLeaderboardProfile:getPage(10))
+local SpeedLeaderboardProfile = Profile.ordered('SpeedLeaderboard')
+print("[Speed Leaderboard]", SpeedLeaderboardProfile:getPage(10))
+
+local TestProfile = Profile.new('TestProfile', {
+    default = {
+        value = 1
+    },
+})
+TestProfile:set({
+    value = TestProfile:get().value + 1
+})
 
 local plrAdded = function(player)
+    ClientScript:Clone().Parent = player:WaitForChild("PlayerGui")
+
     local playerProfile = Profile.new(player, {
         default = {
             Speed = 16
         },
     })
-    
+    if not playerProfile then
+        return
+    end
     playerProfile.Saved:Connect(function()
         print('[Saved]: '..player.Name)
     end)

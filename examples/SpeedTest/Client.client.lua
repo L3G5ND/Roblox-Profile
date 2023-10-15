@@ -25,5 +25,3 @@ end
 
 updateSpeed(Profile:get().Speed)
 Profile.Changed:Connect('Speed', updateSpeed)
-
-return true

@@ -8,25 +8,17 @@
         "Packages": {
           "$path": "Packages"
         },
+        "DevPackages": {
+          "$path": "DevPackages"
+        },
         "Profile": {
           "$path": "src"
-        },
-        "Settings": {
-          "$path": "Tests/Settings.lua"
         }
       },
   
       "ServerScriptService": {
-        "Tests": {
-          "$path": "Tests/Server"
-        }
-      },
-  
-      "StarterPlayer": {
-        "StarterPlayerScripts": {
-          "Tests": {
-            "$path": "Tests/Client"
-          }
+        "Examples": {
+          "$path": "examples"
         }
       }
     }
