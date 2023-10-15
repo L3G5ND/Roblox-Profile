@@ -1,6 +1,6 @@
 local Scrtips = {
     SpeedTest = true,
-    SafetyTest = false
+    SafetyTest = true
 }
 
 for scriptName, enabled in Scrtips do

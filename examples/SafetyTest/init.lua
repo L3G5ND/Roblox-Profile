@@ -1,6 +1,6 @@
 local RS = game:GetService("ReplicatedStorage")
 
-local TestEZ = require(RS.DevPackages.TestEZ)
+local TestEZ = require(RS.Packages.TestEZ)
 
 local results = TestEZ.TestBootstrap:run({ script["Test.spec"] })
 

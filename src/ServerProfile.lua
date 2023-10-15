@@ -5,6 +5,7 @@ local Package = script.Parent
 
 local Util = Package.Util
 local Assert = require(Util.Assert)
+local Error = require(Util.Error)
 local Assign = require(Util.Assign)
 local DeepEqual = require(Util.DeepEqual)
 local Copy = require(Util.Copy)
@@ -44,7 +45,7 @@ local defaultSettings = {
 	default = {},
 	migrators = {},
 	saveInterval = nil,
-	autoKick = true
+	autoKick = true,
 }
 
 local Profile = {}
@@ -59,7 +60,7 @@ local LoadingProfiles = {}
 function Profile.ordered(key)
 	Assert(typeof(key) == "string", "Invalid argument #1 (must be a 'string')")
 	local self = setmetatable({
-		_type = OrderedProfileType
+		_type = OrderedProfileType,
 	}, {
 		__index = OrderedProfile,
 		__tostring = function(self)
@@ -92,13 +93,38 @@ end
 local function validateSetting(settings, setting, settingType)
 	Assert(
 		settings[setting] == nil or typeof(settings[setting]) == settingType,
-		"Invalid argument #2 (settings."..setting.." must be of a '"..settingType.."')"
+		"Invalid argument #2 (settings." .. setting .. " must be of a '" .. settingType .. "')"
 	)
 	if settings[setting] == nil then
 		if defaultSettings[setting] then
 			settings[setting] = defaultSettings[setting]
 		end
 	end
+end
+
+function Profile.getProfile(plrOrKey, timeout)
+	local isPlayer = typeof(plrOrKey) == "Instance" and plrOrKey.ClassName == "Player"
+	Assert(isPlayer or typeof(plrOrKey) == "string", "Invalid argument #1 (must be a 'Player' instance or 'string')")
+	Assert(not timeout or typeof(timeout) == "number", "Invalid argument #2 (type 'number' expected)")
+
+	timeout = timeout or 10
+
+	local key = isPlayer and "profile_" .. plrOrKey.UserId or plrOrKey
+	if not Profile.Profiles[key] then
+		local startTime = os.time()
+		while true do
+			if Profile.Profiles[key] then
+				break
+			end
+			if os.time() - startTime >= timeout then
+				if not LoadingProfiles[key] then
+					Error("Profile " .. key .. " doesnt exist")
+				end
+			end
+			RunService.Heartbeat:Wait()
+		end
+	end
+	return Profile.Profiles[key]
 end
 
 function Profile.new(plrOrKey, settings)
@@ -125,7 +151,7 @@ function Profile.new(plrOrKey, settings)
 	LoadingProfiles[key] = true
 
 	local self = setmetatable({
-		_type = ProfileType
+		_type = ProfileType,
 	}, {
 		__index = Profile,
 		__tostring = function(self)
@@ -137,24 +163,14 @@ function Profile.new(plrOrKey, settings)
 		self.player = plrOrKey
 	end
 
-	local useSessionLock = isPlayer
-	if settings.useSessionLock == false then
-		useSessionLock = false
-	else
-		useSessionLock = true
-	end
-
-	self.key = key
-	self.dataStore = DataStore.NormalDataStore.new(self.key, useSessionLock)
-
 	settings = settings or {}
 
-	validateSetting(settings, 'studioSave', 'boolean')
-	validateSetting(settings, 'default', 'table')
-	validateSetting(settings, 'mergeWithDefault', 'boolean')
-	validateSetting(settings, 'migrators', 'table')
-	validateSetting(settings, 'saveInterval', 'number')
-	validateSetting(settings, 'autoKick', 'boolean')
+	validateSetting(settings, "studioSave", "boolean")
+	validateSetting(settings, "default", "table")
+	validateSetting(settings, "mergeWithDefault", "boolean")
+	validateSetting(settings, "migrators", "table")
+	validateSetting(settings, "saveInterval", "number")
+	validateSetting(settings, "autoKick", "boolean")
 
 	if settings.migrators then
 		for i, migrator in settings.migrators do
@@ -169,6 +185,16 @@ function Profile.new(plrOrKey, settings)
 	self.default = settings.default
 	self.migrators = settings.migrators
 
+	local useSessionLock = isPlayer
+	if settings.useSessionLock == false then
+		useSessionLock = false
+	else
+		useSessionLock = true
+	end
+
+	self.key = key
+	self.dataStore = DataStore.NormalDataStore.new(self.key, useSessionLock)
+
 	self.shouldSave = false
 
 	local profileData
@@ -176,16 +202,16 @@ function Profile.new(plrOrKey, settings)
 	local success, message = pcall(function()
 		profileData, newProfile = self.dataStore:get({
 			data = self.default,
-			version = 1
+			version = 1,
 		})
 	end)
 	if not success then
 		if self.player then
-			self.player:Kick('An error occured when getting profile data. (Please try again)')
+			self.player:Kick("An error occured when getting profile data. (Please try again)\n", message)
 		end
 		return
 	end
-	
+
 	self.version = profileData.version
 	self.data = self:_migrate(profileData.data)
 
@@ -205,7 +231,7 @@ function Profile.new(plrOrKey, settings)
 		data = self:get(),
 		players = { isPlayer and plrOrKey or nil },
 	})
-
+	print(3)
 	self.Changed = self.replicator.Changed
 	self.Saved = Signal.new()
 	self.Destroyed = self.replicator.Destroyed
@@ -259,7 +285,7 @@ function Profile:save(removeSession)
 		local success = pcall(function()
 			self.dataStore:set({
 				data = self:get(),
-				version = self.version
+				version = self.version,
 			}, removeSession)
 		end)
 		if success then

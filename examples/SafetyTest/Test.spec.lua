@@ -14,7 +14,9 @@ local function getProfile()
 end
 
 return function()
+    print(1)
     local SafetyTest = getProfile()
+    print(2)
     SafetyTest:set({
         Value = 1
     })

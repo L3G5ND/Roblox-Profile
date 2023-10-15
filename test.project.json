@@ -4,12 +4,8 @@
       "$className": "DataModel",
   
       "ReplicatedStorage": {
-        "$ignoreUnknownInstances": false,
         "Packages": {
           "$path": "Packages"
-        },
-        "DevPackages": {
-          "$path": "DevPackages"
         },
         "Profile": {
           "$path": "src"

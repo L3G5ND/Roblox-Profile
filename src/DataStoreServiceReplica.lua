@@ -4,10 +4,10 @@ local Copy = require(Util.Copy)
 local DataStoreKeyInfo = {}
 
 function DataStoreKeyInfo.new()
-	local self = setmetatable({}, {__index = DataStoreKeyInfo})
+	local self = setmetatable({}, { __index = DataStoreKeyInfo })
 	self.CreatedTime = math.floor(os.time() * 1000)
 	self.UpdatedTime = math.floor(os.time() * 1000)
-	self.Version = ''
+	self.Version = ""
 	self._metadata = {}
 	self._userIds = {}
 	return self
@@ -26,21 +26,21 @@ local DataStores = {}
 
 function DataStore.new(name, scope)
 	scope = scope or "global"
-	if DataStores[name..scope] then
-		return DataStores[name..scope]
+	if DataStores[name .. scope] then
+		return DataStores[name .. scope]
 	end
 	local self = setmetatable({}, {
 		__index = DataStore,
 		__tostring = function()
 			return name
-		end
+		end,
 	})
 	self.name = name
 	self.scope = scope
 	self.data = {}
 	self._keyInfos = {}
 	self._getCache = {}
-	DataStores[name..scope] = self
+	DataStores[name .. scope] = self
 	return self
 end
 
@@ -81,7 +81,7 @@ function DataStore:SetAsync(key, value, userIds)
 	local keyInfo = self._keyInfos[key]
 	keyInfo._userIds = userIds
 	keyInfo.UpdatedTime = math.floor(os.time() * 1000)
-	return ''
+	return ""
 end
 
 function DataStore:UpdateAsync(key, transformFunction)
@@ -105,7 +105,7 @@ end
 local DataStorePages = {}
 
 function DataStorePages.new(data, context)
-	local self = setmetatable({}, {__index = DataStorePages})
+	local self = setmetatable({}, { __index = DataStorePages })
 	self.IsFinished = false
 	self._data = {}
 	self._currentPage = 1
@@ -159,20 +159,20 @@ local OrderedDataStores = {}
 
 function OrderedDataStore.new(name, scope)
 	scope = scope or "global"
-	if OrderedDataStores[name..scope] then
-		return OrderedDataStores[name..scope]
+	if OrderedDataStores[name .. scope] then
+		return OrderedDataStores[name .. scope]
 	end
 	local self = setmetatable({}, {
 		__index = OrderedDataStore,
 		__tostring = function()
 			return name
-		end
+		end,
 	})
 	self.name = name
 	self.scope = scope
 	self.data = {}
 	self._getCache = {}
-	OrderedDataStores[name..scope] = self
+	OrderedDataStores[name .. scope] = self
 	return self
 end
 
@@ -182,7 +182,7 @@ function OrderedDataStore:GetSortedAsync(ascending, pageSize, minValue, maxValue
 		ascending = ascending,
 		pageSize = pageSize,
 		minValue = minValue,
-		maxValue = maxValue
+		maxValue = maxValue,
 	})
 end
 
@@ -233,7 +233,7 @@ end
 local DataStoreService = {}
 
 function DataStoreService.new()
-	local self = setmetatable({}, {__index = DataStoreService})
+	local self = setmetatable({}, { __index = DataStoreService })
 	return self
 end
 

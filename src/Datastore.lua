@@ -1,5 +1,5 @@
 local DSS = game:GetService("DataStoreService")
-local RunService = game:GetService('RunService')
+local RunService = game:GetService("RunService")
 
 local Package = script.Parent
 
@@ -13,12 +13,14 @@ local IsStudio = RunService:IsStudio()
 
 local shouldUseReplica = false
 if game.GameId == 0 then
+	warn("Publish this place to save data")
 	shouldUseReplica = true
 elseif IsStudio then
 	local success, message = pcall(function()
-		DSS:GetDataStore("__STUDIO_API_ACCESS_TEST__"):SetAsync("__Value__", "__" .. os.time() .. '__')
+		DSS:GetDataStore("__STUDIO_API_ACCESS_TEST__"):SetAsync("__Value__", "__" .. os.time() .. "__")
 	end)
 	if not success and message:find("403", 1, true) then
+		warn("Publish this place to save data")
 		shouldUseReplica = true
 	end
 end
@@ -30,16 +32,16 @@ local Settings = {
 	RequestCooldown = 5,
 	MaxSaveAttempts = 10,
 	ForceSessionAttempts = 5,
-	ForceSessionTime = 60 * 15
+	ForceSessionTime = 60 * 15,
 }
 
 local DataStore = {}
-DataStore.SessionId = game.PlaceId..'/'..game.JobId
+DataStore.SessionId = game.PlaceId .. "/" .. game.JobId
 DataStore._getQueue = {}
 DataStore._setQueue = {}
 
 function DataStore.new(name, sessionLock)
-	local self = setmetatable({}, {__index = DataStore})
+	local self = setmetatable({}, { __index = DataStore })
 	self.name = name
 	self.sessionLock = sessionLock
 	self.dataStore = DSS:GetDataStore(name)
@@ -52,10 +54,10 @@ function DataStore:get(default)
 
 	local hasSession = false
 	local forceSession = false
-	
+
 	local fetchedData
 	local newProfile = false
-	for i = 1, Settings.ForceSessionAttempts+1 do
+	for i = 1, Settings.ForceSessionAttempts + 1 do
 		local version = self:_getVersion()
 		self.dataStore:UpdateAsync(version, function(data)
 			if not data then
@@ -66,7 +68,9 @@ function DataStore:get(default)
 				if forceSession then
 					hasSession = true
 				elseif data.Metadata then
-					if data.Metadata.LastUpdate and (os.time() - data.Metadata.LastUpdate >= Settings.ForceSessionTime) then
+					if
+						data.Metadata.LastUpdate and (os.time() - data.Metadata.LastUpdate >= Settings.ForceSessionTime)
+					then
 						hasSession = true
 					elseif data.Metadata.SessionId == nil or data.Metadata.SessionId == SessionId then
 						hasSession = true
@@ -77,7 +81,7 @@ function DataStore:get(default)
 				if hasSession then
 					data.Metadata = {
 						SessionId = SessionId,
-						LastUpdate = os.time()
+						LastUpdate = os.time(),
 					}
 					fetchedData = data
 					return data
@@ -88,7 +92,7 @@ function DataStore:get(default)
 					newProfile = true
 				end
 				data.Metadata = {
-					LastUpdate = os.time()
+					LastUpdate = os.time(),
 				}
 				fetchedData = data
 				hasSession = true
@@ -113,14 +117,14 @@ function DataStore:set(value, removeSession)
 	value = Copy(value)
 
 	local SessionId = DataStore.SessionId
-	
+
 	local Metadata
 	local didSave
 	for _ = 1, Settings.MaxSaveAttempts do
 		local version = self:_getVersion() + 1
 		if self.sessionLock then
 			pcall(function()
-				self.dataStore:UpdateAsync(version-1, function(data)
+				self.dataStore:UpdateAsync(version - 1, function(data)
 					if data.Metadata then
 						if data.Metadata.SessionId == SessionId then
 							Metadata = data.Metadata
@@ -179,7 +183,7 @@ end
 local OrderedDataStore = {}
 
 function OrderedDataStore.new(name)
-	local self = setmetatable({}, {__index = OrderedDataStore})
+	local self = setmetatable({}, { __index = OrderedDataStore })
 	self.orderedDataStore = DSS:GetOrderedDataStore(name)
 	return self
 end
@@ -198,8 +202,8 @@ end
 
 return {
 	useStoreReplica = function(value)
-		DSS = value and DataStoreServiceReplica or game:GetService('DataStoreService')
+		DSS = value and DataStoreServiceReplica or game:GetService("DataStoreService")
 	end,
 	NormalDataStore = DataStore,
-	OrderedDataStore = OrderedDataStore
+	OrderedDataStore = OrderedDataStore,
 }
