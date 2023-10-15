@@ -350,6 +350,16 @@ game:BindToClose(function()
 	for _, profile in Profile.Profiles do
 		profile:Destroy()
 	end
+	while true do
+		local ProfilesLength = 0
+		for _, _ in Profile.Profiles do
+			ProfilesLength += 1
+		end
+		if ProfilesLength <= 0 then
+			break
+		end
+		task.wait()
+	end
 end)
 
 Players.PlayerRemoving:Connect(function(plr)
