@@ -231,7 +231,7 @@ function Profile.new(plrOrKey, settings)
 		data = self:get(),
 		players = { isPlayer and plrOrKey or nil },
 	})
-	print(3)
+
 	self.Changed = self.replicator.Changed
 	self.Saved = Signal.new()
 	self.Destroyed = self.replicator.Destroyed
