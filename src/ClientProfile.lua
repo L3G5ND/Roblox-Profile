@@ -15,7 +15,7 @@ local function expect(callback, errorMsg, timeout)
 	timeout = timeout or 10
 	local startTime = os.clock()
 	while true do
-		if callback() == true then
+		if callback() ~= nil then
 			return
 		end
 		if os.clock() - startTime >= timeout then

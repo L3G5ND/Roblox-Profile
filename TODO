@@ -1,0 +1,7 @@
+server error when profile doesn't exist
+forcing server to create a profile for clients
+merge allows Profile.None
+way to add values to a profile without actually saving it to the datastore
+swap Profile_[UserId] to [UserId]_Profile
+if server lock return nil
+validate set values to prevent datastore errors
