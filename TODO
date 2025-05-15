@@ -4,4 +4,6 @@ merge allows Profile.None
 way to add values to a profile without actually saving it to the datastore
 swap Profile_[UserId] to [UserId]_Profile
 if server lock return nil
+if server lock kick player
 validate set values to prevent datastore errors
+possible move version to metadata

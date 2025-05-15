@@ -242,6 +242,15 @@ function Profile.new(plrOrKey, settings)
 	return self
 end
 
+function Profile.profileExists(plrOrKey)
+	local isPlayer = typeof(plrOrKey) == "Instance" and plrOrKey.ClassName == "Player"
+	Assert(isPlayer or typeof(plrOrKey) == "string", "Invalid argument #1 (must be a 'Player' instance or 'string')")
+
+	local key = isPlayer and "profile_" .. plrOrKey.UserId or plrOrKey
+
+	return Profile.Profiles[key] and true or false
+end
+
 function Profile:get()
 	return Copy(self.data)
 end
