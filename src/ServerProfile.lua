@@ -43,6 +43,7 @@ local defaultSettings = {
 	studioSave = true,
 	mergeWithDefault = true,
 	default = {},
+	publicValues = {},
 	migrators = {},
 	saveInterval = nil,
 	autoKick = true,
@@ -176,6 +177,7 @@ function Profile.new(plrOrKey, settings)
 
 	validateSetting(settings, "studioSave", "boolean")
 	validateSetting(settings, "default", "table")
+	validateSetting(settings, "publicValues", "table")
 	validateSetting(settings, "mergeWithDefault", "boolean")
 	validateSetting(settings, "migrators", "table")
 	validateSetting(settings, "saveInterval", "number")
@@ -239,7 +241,12 @@ function Profile.new(plrOrKey, settings)
 
 	self.replicator = Replicator.new({
 		key = self.key,
-		data = self:get(),
+		data = self:getPublic(),
+		players = { isPlayer and plrOrKey or nil },
+	})
+	self.privateReplicator = Replicator.new({
+		key = self.key.."_Private",
+		data = self:getPrivate(),
 		players = { isPlayer and plrOrKey or nil },
 	})
 
@@ -257,6 +264,37 @@ function Profile:get()
 	return Copy(self.data)
 end
 
+function Profile:getPublic()
+	local data = Copy(self.data)
+	local function getPublicValues(data, publicValues)
+		for key, value in data do
+			if typeof(publicValues[key]) == "table" then
+				getPublicValues(value, publicValues[key])
+			elseif not publicValues[key] then
+				data[key] = nil
+			end
+		end
+	end
+	getPublicValues(data, self.settings.publicValues)
+	return data
+end
+
+function Profile:getPrivate()
+	local data = Copy(self.data)
+
+	local function getPrivateValues(data, publicValues)
+		for key, value in publicValues do
+			if typeof(value) == "table" then
+				getPrivateValues(data[key], value)
+			elseif data[key] then
+				data[key] = nil
+			end
+		end
+	end
+	getPrivateValues(data, self.settings.publicValues)
+	return data
+end
+
 function Profile:set(data, hard)
 	Assert(typeof(data) == "table", "Invalid argument #1 (must be a 'table')")
 
@@ -269,11 +307,24 @@ function Profile:set(data, hard)
 	end
 	removeNone(newProfileData)
 
-	if not DeepEqual(oldProfileData, newProfileData) then
-		self.shouldSave = true
-		self.data = newProfileData
+	local oldPublicData = self:getPublic()
+	local oldPrivateData = self:getPrivate()
+
+	self.data = newProfileData
+	
+	local publicData = self:getPublic()
+	local privateData = self:getPrivate()
+	
+	if not DeepEqual(oldPublicData, publicData) then
 		if self.replicator then
-			self.replicator:set(newProfileData)
+			self.shouldSave = true
+			self.replicator:set(publicData)
+		end
+	end
+	if not DeepEqual(oldPrivateData, privateData) then
+		if self.privateReplicator then
+			self.shouldSave = true
+			self.privateReplicator:set(privateData)
 		end
 	end
 end
@@ -348,6 +399,7 @@ function Profile:Destroy()
 	self.Destroyed:DisconnectAll()
 
 	self.replicator:Destroy()
+	self.privateReplicator:Destroy()
 
 	Profile.Profiles[self.key] = nil
 end
