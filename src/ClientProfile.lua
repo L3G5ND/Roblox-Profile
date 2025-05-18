@@ -43,7 +43,7 @@ function ClientProfile.new(plrOrKey)
 	if LoadingProfiles[key] then
 		expect(function()
 			return Profiles[key]
-		end, "Wasn't able to get profile '" .. key .. "'", 30)
+		end, "Wasn't able to get profile '" .. key .. "'", 20)
 		return Profiles[key]
 	end
 	LoadingProfiles[key] = true

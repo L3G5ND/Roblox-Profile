@@ -1,13 +1,13 @@
 [package]
 name = "l3g5nd/profile"
 description = "Easily save data to Roblox servers and access profile data from the client."
-version = "2.0.13"
+version = "2.0.14"
 license = "Apache-2.0"
 authors = ["L3G5ND"]
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
 
 [dependencies]
-Replicator = "l3g5nd/replicator@2.2.6"
+Replicator = "l3g5nd/replicator@2.2.7"
 Signal = "stravant/goodsignal@0.2.1"
 TestEZ = "roblox/testez@0.4.1"
