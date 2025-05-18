@@ -102,6 +102,15 @@ local function validateSetting(settings, setting, settingType)
 	end
 end
 
+function Profile.profileExists(plrOrKey)
+	local isPlayer = typeof(plrOrKey) == "Instance" and plrOrKey.ClassName == "Player"
+	Assert(isPlayer or typeof(plrOrKey) == "string", "Invalid argument #1 (must be a 'Player' instance or 'string')")
+
+	local key = isPlayer and "profile_" .. plrOrKey.UserId or plrOrKey
+
+	return Profile.Profiles[key] and true or false
+end
+
 function Profile.getProfile(plrOrKey, timeout)
 	local isPlayer = typeof(plrOrKey) == "Instance" and plrOrKey.ClassName == "Player"
 	Assert(isPlayer or typeof(plrOrKey) == "string", "Invalid argument #1 (must be a 'Player' instance or 'string')")
@@ -217,6 +226,8 @@ function Profile.new(plrOrKey, settings)
 
 	self._lastSaveTime = os.clock()
 	self._isDestroyed = false
+	
+	self._finalizeCallbacks = {}
 
 	if newProfile then
 		self.shouldSave = true
@@ -240,15 +251,6 @@ function Profile.new(plrOrKey, settings)
 	LoadingProfiles[self.key] = nil
 
 	return self
-end
-
-function Profile.profileExists(plrOrKey)
-	local isPlayer = typeof(plrOrKey) == "Instance" and plrOrKey.ClassName == "Player"
-	Assert(isPlayer or typeof(plrOrKey) == "string", "Invalid argument #1 (must be a 'Player' instance or 'string')")
-
-	local key = isPlayer and "profile_" .. plrOrKey.UserId or plrOrKey
-
-	return Profile.Profiles[key] and true or false
 end
 
 function Profile:get()
@@ -307,6 +309,10 @@ function Profile:save(removeSession)
 	return true
 end
 
+function Profile:AddFinalizer(callback)
+	table.insert(self._finalizeCallbacks, callback)
+end
+
 function Profile:_migrate(profileData)
 	if self.migrators then
 		local version = #self.migrators + 1
@@ -324,7 +330,12 @@ function Profile:_migrate(profileData)
 	return profileData
 end
 
+
 function Profile:Destroy()
+	for _, callback in self._finalizeCallbacks do
+		callback()
+	end
+	
 	if self._isDestroyed then
 		return
 	end
