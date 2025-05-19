@@ -14,6 +14,7 @@ local TypeMarker = require(Util.TypeMarker)
 local Replicator = require(Package.Replicator)
 local Signal = require(Package.Signal)
 local DataStore = require(Package.DataStore)
+local ChangedCallback = require(Package.ChangedCallback)
 local None = require(Package.None)
 
 local IsStudio = RunService:IsStudio()
@@ -37,6 +38,36 @@ local function merge(tbl1, tbl2)
 		end
 	end
 	return tbl1
+end
+
+local function signalWrapper(signal, events)
+	events = events or {}
+	return {
+		Connect = function(_, ...)
+			if events.Connect then
+				return events.Connect(signal, ...)
+			end
+			return signal:Connect(...)
+		end,
+		Once = function(_, ...)
+			if events.Once then
+				return events.Once(signal, ...)
+			end
+			return signal:Once(...)
+		end,
+		Wait = function()
+			if events.Wait then
+				return events.Wait(signal)
+			end
+			return signal:Wait()
+		end,
+		DisconnectAll = function()
+			if events.DisconnectAll then
+				return events.DisconnectAll(signal)
+			end
+			signal:DisconnectAll()
+		end
+	}
 end
 
 local defaultSettings = {
@@ -249,11 +280,27 @@ function Profile.new(plrOrKey, settings)
 		data = self:getPrivate(),
 		players = { isPlayer and plrOrKey or nil },
 	})
-
-	self.Changed = self.replicator.Changed
+	
 	self.Saved = Signal.new()
 	self.Destroyed = self.replicator.Destroyed
 
+	self._ChangedSignal = Signal.new()
+	self.Changed = signalWrapper(self._ChangedSignal, {
+		Connect = function(_, ...)
+			return self._ChangedSignal:Connect(ChangedCallback(...))
+		end,
+		Once = function(_, ...)
+			return self._ChangedSignal:Once(ChangedCallback(...))
+		end
+	})
+
+	self.replicator.Changed:Connect(function(newData, oldData)
+		self._ChangedSignal:Fire(newData, oldData)
+	end)
+	self.privateReplicator.Changed:Connect(function(newData, oldData)
+		self._ChangedSignal:Fire(newData, oldData)
+	end)
+	
 	Profile.Profiles[self.key] = self
 	LoadingProfiles[self.key] = nil
 
